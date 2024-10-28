@@ -8,7 +8,7 @@
 
 int main() {
 	std::vector<unsigned char> bytes;
-
+	
 	signalsmith::cbor::CborWalker cbor;
 	signalsmith::cbor::TaggedCborWalker taggedCbor;
 
@@ -539,4 +539,47 @@ int main() {
 		test(hadFun, "had key 1");
 		test(hadAmt, "had key 2");
 	}
+	
+	// Check with https://geraintluff.github.io/cbor-debug/ - surround with 0x9F / 0xFF so it shows the sequence, and also checks it's closed properly
+	decodeHex("0x00D8401864F4F53903E79F4301020304FF824301020304A20443010203056466697665BF044201022463666976FF");
+	
+	std::vector<unsigned char> writeBytes;
+	signalsmith::cbor::CborWriter writer(writeBytes);
+	writer.addInt(0);
+	writer.addTag(64);
+	writer.addInt(100);
+	writer.addBool(false);
+	writer.addBool(true);
+	writer.addInt(-1000);
+	writer.openArray();
+	unsigned char writeChars[3] = {0x01, 0x02, 0x03};
+	writer.addBytes(writeChars, 3);
+	writer.addInt(4);
+	writer.close();
+	writer.openArray(2);
+	writer.addBytes(writeChars, 3);
+	writer.addInt(4);
+	writer.openMap(2);
+	writer.addInt(4);
+	writer.addBytes(writeChars, 3);
+	writer.addInt(5);
+	const char *writeString = "five";
+	writer.addUtf8(writeString);
+	writer.openMap();
+	writer.addInt(4);
+	writer.addBytes(writeChars, 2);
+	writer.addInt(-5);
+	writer.addUtf8(writeString, 3);
+	writer.close();
+	
+	for (size_t i = 0; i < writeBytes.size(); ++i) {
+		unsigned char byte = writeBytes[i];
+		unsigned char hex[3] = {(unsigned char)(byte>>4), (unsigned char)(byte&0x0F), 0};
+		hex[0] += (hex[0] < 10) ? '0' : ('A' - 10);
+		hex[1] += (hex[1] < 10) ? '0' : ('A' - 10);
+		
+		test(bytes[i] == writeBytes[i], std::to_string(i) + ": " + (char *)hex);
+	}
+	test(bytes.size() == writeBytes.size(), "lengths match");
+	test(true, "hell yeah");
 }

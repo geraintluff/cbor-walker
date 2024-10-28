@@ -14,6 +14,97 @@
 
 namespace signalsmith { namespace cbor {
 
+struct CborWriter {
+	CborWriter(std::vector<unsigned char> &bytes) : bytes(bytes) {}
+	
+	void addUInt(uint64_t u) {
+		writeHead(0, u);
+	}
+	void addInt(int64_t u) {
+		if (u >= 0) {
+			writeHead(0, u);
+		} else {
+			writeHead(1, -1 - u);
+		}
+	}
+	void addTag(uint64_t u) {
+		writeHead(6, u);
+	}
+	void addBool(bool b) {
+		writeHead(7, 20 + b);
+	}
+	void openArray() {
+		bytes.push_back(0x9F);
+	}
+	void openArray(size_t items) {
+		writeHead(4, items);
+	}
+	void openMap() {
+		bytes.push_back(0xBF);
+	}
+	void openMap(size_t pairs) {
+		writeHead(5, pairs);
+	}
+	void close() {
+		bytes.push_back(0xFF);
+	}
+	void addBytes(const void *ptr, size_t length) {
+		addBytes((const unsigned char *)ptr, length);
+	}
+	void addBytes(const unsigned char *ptr, size_t length) {
+		writeHead(2, length);
+		bytes.insert(bytes.end(), ptr, ptr + length);
+	}
+	void openBytes() {
+		bytes.push_back(0x5F);
+	}
+	void addUtf8(const char *ptr, size_t length) {
+		writeHead(3, length);
+		bytes.insert(bytes.end(), ptr, ptr + length);
+	}
+	void addUtf8(const char *str) {
+		addUtf8(str, std::strlen(str));
+	}
+	void openUtf8() {
+		bytes.push_back(0x7F);
+	}
+	void addNull() {
+		bytes.push_back(0xF6);
+	}
+	void addUndefined() {
+		bytes.push_back(0xF7);
+	}
+	void addSimple(unsigned char k) {
+		writeHead(7, k);
+	}
+private:
+	void writeHead(unsigned char type, uint64_t argument) {
+		type <<= 5;
+		if (argument >= 4294967296ul) {
+			bytes.push_back(type|27);
+			for (int i = 0; i < 8; ++i) {
+				bytes.push_back(argument>>(56 - i*8));
+			}
+		} else if (argument >= 65536) {
+			bytes.push_back(type|26);
+			for (int i = 0; i < 4; ++i) {
+				bytes.push_back(argument>>(24 - i*8));
+			}
+		} else if (argument >= 256) {
+			bytes.push_back(type|25);
+			bytes.push_back(argument>>8);
+			bytes.push_back(argument);
+		} else if (argument >= 24) {
+			bytes.push_back(type|24);
+			bytes.push_back(argument);
+		} else {
+			bytes.push_back(type|argument);
+		}
+	}
+
+	std::vector<unsigned char> &bytes;
+};
+
 struct CborWalker {
 	CborWalker() : CborWalker(nullptr, nullptr, ERROR_NOT_INITIALISED) {}
 	CborWalker(const unsigned char *data, const unsigned char *dataEnd) : data(data), dataEnd(dataEnd) {
