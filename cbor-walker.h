@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <cstring>
 #ifndef UINT64_MAX
 #	define UINT64_MAX 0xFFFFFFFFFFFFFFFFull;
 #endif
@@ -11,99 +12,12 @@
 #	define CBOR_WALKER_USE_STRING_VIEW
 #	include <string_view>
 #endif
+#if __cplusplus >= 202002L
+#	define CBOR_WALKER_USE_BIT_CAST
+#	include <bit>
+#endif
 
 namespace signalsmith { namespace cbor {
-
-struct CborWriter {
-	CborWriter(std::vector<unsigned char> &bytes) : bytes(bytes) {}
-	
-	void addUInt(uint64_t u) {
-		writeHead(0, u);
-	}
-	void addInt(int64_t u) {
-		if (u >= 0) {
-			writeHead(0, u);
-		} else {
-			writeHead(1, -1 - u);
-		}
-	}
-	void addTag(uint64_t u) {
-		writeHead(6, u);
-	}
-	void addBool(bool b) {
-		writeHead(7, 20 + b);
-	}
-	void openArray() {
-		bytes.push_back(0x9F);
-	}
-	void openArray(size_t items) {
-		writeHead(4, items);
-	}
-	void openMap() {
-		bytes.push_back(0xBF);
-	}
-	void openMap(size_t pairs) {
-		writeHead(5, pairs);
-	}
-	void close() {
-		bytes.push_back(0xFF);
-	}
-	void addBytes(const void *ptr, size_t length) {
-		addBytes((const unsigned char *)ptr, length);
-	}
-	void addBytes(const unsigned char *ptr, size_t length) {
-		writeHead(2, length);
-		bytes.insert(bytes.end(), ptr, ptr + length);
-	}
-	void openBytes() {
-		bytes.push_back(0x5F);
-	}
-	void addUtf8(const char *ptr, size_t length) {
-		writeHead(3, length);
-		bytes.insert(bytes.end(), ptr, ptr + length);
-	}
-	void addUtf8(const char *str) {
-		addUtf8(str, std::strlen(str));
-	}
-	void openUtf8() {
-		bytes.push_back(0x7F);
-	}
-	void addNull() {
-		bytes.push_back(0xF6);
-	}
-	void addUndefined() {
-		bytes.push_back(0xF7);
-	}
-	void addSimple(unsigned char k) {
-		writeHead(7, k);
-	}
-private:
-	void writeHead(unsigned char type, uint64_t argument) {
-		type <<= 5;
-		if (argument >= 4294967296ul) {
-			bytes.push_back(type|27);
-			for (int i = 0; i < 8; ++i) {
-				bytes.push_back(argument>>(56 - i*8));
-			}
-		} else if (argument >= 65536) {
-			bytes.push_back(type|26);
-			for (int i = 0; i < 4; ++i) {
-				bytes.push_back(argument>>(24 - i*8));
-			}
-		} else if (argument >= 256) {
-			bytes.push_back(type|25);
-			bytes.push_back(argument>>8);
-			bytes.push_back(argument);
-		} else if (argument >= 24) {
-			bytes.push_back(type|24);
-			bytes.push_back(argument);
-		} else {
-			bytes.push_back(type|argument);
-		}
-	}
-
-	std::vector<unsigned char> &bytes;
-};
 
 struct CborWalker {
 	CborWalker() : CborWalker(nullptr, nullptr, ERROR_NOT_INITIALISED) {}
@@ -652,6 +566,229 @@ private:
 			CborWalker::operator=(enter());
 		}
 	}
+};
+
+struct CborWriter {
+	CborWriter(std::vector<unsigned char> &bytes) : bytes(bytes) {}
+	
+	void addUInt(uint64_t u) {
+		writeHead(0, u);
+	}
+	void addInt(int64_t u) {
+		if (u >= 0) {
+			writeHead(0, u);
+		} else {
+			writeHead(1, -1 - u);
+		}
+	}
+	void addTag(uint64_t u) {
+		writeHead(6, u);
+	}
+	void addBool(bool b) {
+		writeHead(7, 20 + b);
+	}
+	void openArray() {
+		bytes.push_back(0x9F);
+	}
+	void openArray(size_t items) {
+		writeHead(4, items);
+	}
+	void openMap() {
+		bytes.push_back(0xBF);
+	}
+	void openMap(size_t pairs) {
+		writeHead(5, pairs);
+	}
+	void close() {
+		bytes.push_back(0xFF);
+	}
+	void addBytes(const void *ptr, size_t length) {
+		addBytes((const unsigned char *)ptr, length);
+	}
+	void addBytes(const unsigned char *ptr, size_t length) {
+		writeHead(2, length);
+		bytes.insert(bytes.end(), ptr, ptr + length);
+	}
+	void openBytes() {
+		bytes.push_back(0x5F);
+	}
+	void addUtf8(const char *ptr, size_t length) {
+		writeHead(3, length);
+		bytes.insert(bytes.end(), ptr, ptr + length);
+	}
+	void addUtf8(const char *str) {
+		addUtf8(str, std::strlen(str));
+	}
+	void openUtf8() {
+		bytes.push_back(0x7F);
+	}
+	void addNull() {
+		bytes.push_back(0xF6);
+	}
+	void addUndefined() {
+		bytes.push_back(0xF7);
+	}
+	void addSimple(unsigned char k) {
+		writeHead(7, k);
+	}
+	
+	void addFloat(float v) {
+		bytes.push_back(0xFA);
+#ifdef CBOR_WALKER_USE_BIT_CAST
+		uint32_t vi = std::bit_cast<uint32_t>(v);
+#else
+		uint32_t vi;
+		std::memcpy(&vi, &v, 4);
+#endif
+		for (size_t i = 0; i < 4; ++i) {
+			auto shift = (3 - i)*8;
+			bytes.push_back((vi>>shift)&0xFF);
+		}
+	}
+	void addFloat(double v) {
+		bytes.push_back(0xFB);
+#ifdef CBOR_WALKER_USE_BIT_CAST
+		uint64_t vi = std::bit_cast<uint64_t>(v);
+#else
+		uint64_t vi;
+		std::memcpy(&vi, &v, 8);
+#endif
+		for (size_t i = 0; i < 8; ++i) {
+			auto shift = (7 - i)*8;
+			bytes.push_back((vi>>shift)&0xFF);
+		}
+	}
+	
+	// RFC-8746 tags for typed arrays
+	void addTypedArray(const uint8_t *arr, size_t length) {
+		addTag(64);
+		addBytes((const void *)arr, length);
+	}
+	void addTypedArray(const int8_t *arr, size_t length) {
+		addTag(72);
+		addBytes((const void *)arr, length);
+	}
+	void addTypedArray(const uint16_t *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 65 : 69);
+		writeTypedBlock<uint16_t>(arr, length, bigEndian);
+	}
+	void addTypedArray(const uint32_t *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 66 : 70);
+		writeTypedBlock<uint32_t>(arr, length, bigEndian);
+	}
+	void addTypedArray(const uint64_t *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 67 : 71);
+		writeTypedBlock<uint64_t>(arr, length, bigEndian);
+	}
+	// For signed ints, we make a proxy struct which casts them on-the-fly
+	void addTypedArray(const int16_t *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 73 : 77);
+		struct {
+			const int16_t *arr;
+			uint16_t operator[](size_t i) const {
+				return (uint16_t)(arr[i]);
+			}
+		} unsignedArray{arr};
+		writeTypedBlock<uint16_t>(unsignedArray, length, bigEndian);
+	}
+	void addTypedArray(const int32_t *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 74 : 78);
+		struct {
+			const int32_t *arr;
+			uint32_t operator[](size_t i) const {
+				return (uint32_t)(arr[i]);
+			}
+		} unsignedArray{arr};
+		writeTypedBlock<uint32_t>(unsignedArray, length, bigEndian);
+	}
+	void addTypedArray(const int64_t *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 75 : 79);
+		struct {
+			const int64_t *arr;
+			uint64_t operator[](size_t i) const {
+				return (uint64_t)(arr[i]);
+			}
+		} unsignedArray{arr};
+		writeTypedBlock<uint64_t>(unsignedArray, length, bigEndian);
+	}
+	// Look, I'm not any happier about this than you are
+	void addTypedArray(const float *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 81 : 85);
+		struct {
+			const float *arr;
+			uint32_t operator[](size_t i) const {
+#ifdef CBOR_WALKER_USE_BIT_CAST
+				return std::bit_cast<uint32_t>(arr[i]);
+#else
+				float v = arr[i];
+				uint32_t vi;
+				std::memcpy(&vi, &v, 4);
+				return vi;
+#endif
+			}
+		} unsignedArray{arr};
+		writeTypedBlock<uint32_t>(unsignedArray, length, bigEndian);
+	}
+	void addTypedArray(const double *arr, size_t length, bool bigEndian=false) {
+		addTag(bigEndian ? 82 : 86);
+		struct {
+			const double *arr;
+			uint64_t operator[](size_t i) const {
+#ifdef CBOR_WALKER_USE_BIT_CAST
+				return std::bit_cast<uint64_t>(arr[i]);
+#else
+				double v = arr[i];
+				uint64_t vi;
+				std::memcpy(&vi, &v, 8);
+				return vi;
+#endif
+			}
+		} unsignedArray{arr};
+		writeTypedBlock<uint64_t>(unsignedArray, length, bigEndian);
+	}
+private:
+	void writeHead(unsigned char type, uint64_t argument) {
+		type <<= 5;
+		if (argument >= 4294967296ul) {
+			bytes.push_back(type|27);
+			for (size_t i = 0; i < 8; ++i) {
+				bytes.push_back(argument>>(56 - i*8));
+			}
+		} else if (argument >= 65536) {
+			bytes.push_back(type|26);
+			for (size_t i = 0; i < 4; ++i) {
+				bytes.push_back(argument>>(24 - i*8));
+			}
+		} else if (argument >= 256) {
+			bytes.push_back(type|25);
+			bytes.push_back(argument>>8);
+			bytes.push_back(argument);
+		} else if (argument >= 24) {
+			bytes.push_back(type|24);
+			bytes.push_back(argument);
+		} else {
+			bytes.push_back(type|argument);
+		}
+	}
+	
+	template<typename IntType, class Array>
+	void writeTypedBlock(Array &&array, size_t length, bool bigEndian) {
+		constexpr size_t B = sizeof(IntType);
+		writeHead(2, length*B);
+		if (bigEndian) {
+			for (size_t i = 0; i < length; ++i) {
+				auto v = array[i];
+				for (size_t b = 0; b < B; ++b) bytes.push_back((v>>((B-1-b)*8))&0xFF);
+			}
+		} else {
+			for (size_t i = 0; i < length; ++i) {
+				auto v = array[i];
+				for (size_t b = 0; b < B; ++b) bytes.push_back((v>>(b*8))&0xFF);
+			}
+		}
+	}
+
+	std::vector<unsigned char> &bytes;
 };
 
 }} // namespace

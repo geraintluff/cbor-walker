@@ -541,7 +541,7 @@ int main() {
 	}
 	
 	// Check with https://geraintluff.github.io/cbor-debug/ - surround with 0x9F / 0xFF so it shows the sequence, and also checks it's closed properly
-	decodeHex("0x00D8401864F4F53903E79F4301020304FF824301020304A20443010203056466697665BF044201022463666976FF");
+	decodeHex("0x00D8401864F4F53903E79F4301020304FF824301020304A20443010203056466697665BF044201022463666976FFFA40490FDBFB400921FB54442D18");
 	
 	std::vector<unsigned char> writeBytes;
 	signalsmith::cbor::CborWriter writer(writeBytes);
@@ -571,6 +571,8 @@ int main() {
 	writer.addInt(-5);
 	writer.addUtf8(writeString, 3);
 	writer.close();
+	writer.addFloat(3.1415927f);
+	writer.addFloat(3.141592653589793);
 	
 	for (size_t i = 0; i < writeBytes.size(); ++i) {
 		unsigned char byte = writeBytes[i];
