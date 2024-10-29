@@ -541,7 +541,16 @@ int main() {
 	}
 	
 	// Check with https://geraintluff.github.io/cbor-debug/ - surround with 0x9F / 0xFF so it shows the sequence, and also checks it's closed properly
-	decodeHex("0x00D8401864F4F53903E79F4301020304FF824301020304A20443010203056466697665BF044201022463666976FFFA40490FDBFB400921FB54442D18");
+	// It doesn't follow the floating-point ones at the end - those were copied from https://evanw.github.io/float-toy/
+	decodeHex(
+		"0x00D8401864F4F53903E79F4301020304FF824301020304A20443010203056466697665BF044201022463666976FF"
+		// typed arrays (2 floats, little-endian then big-endian)
+		"D855" "48DB0F49400050C347" "D851" "4840490FDB47C35000"
+		// typed arrays (2 doubles, little-endian then big-endian)
+		"D856" "50182D4454FB21094066666666666610C0" "D852" "50400921FB54442D18C010666666666666"
+		// floats
+		"FA40490FDBFB400921FB54442D18"
+	);
 	
 	std::vector<unsigned char> writeBytes;
 	signalsmith::cbor::CborWriter writer(writeBytes);
@@ -571,6 +580,14 @@ int main() {
 	writer.addInt(-5);
 	writer.addUtf8(writeString, 3);
 	writer.close();
+	//testFloat(100000.0, "0xfa47c35000");
+	//testFloat(-4.1, "0xfbc010666666666666");
+	float writeFloats[2] = {3.1415927f, 100000.0f};
+	double writeDoubles[2] = {3.141592653589793, -4.1};
+	writer.addTypedArray(writeFloats, 2);
+	writer.addTypedArray(writeFloats, 2, true);
+	writer.addTypedArray(writeDoubles, 2);
+	writer.addTypedArray(writeDoubles, 2, true);
 	writer.addFloat(3.1415927f);
 	writer.addFloat(3.141592653589793);
 	

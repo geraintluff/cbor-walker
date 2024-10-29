@@ -771,18 +771,18 @@ private:
 		}
 	}
 	
-	template<typename IntType, class Array>
+	template<typename UIntType, class Array>
 	void writeTypedBlock(Array &&array, size_t length, bool bigEndian) {
-		constexpr size_t B = sizeof(IntType);
+		constexpr size_t B = sizeof(UIntType);
 		writeHead(2, length*B);
 		if (bigEndian) {
 			for (size_t i = 0; i < length; ++i) {
-				auto v = array[i];
+				UIntType v = array[i];
 				for (size_t b = 0; b < B; ++b) bytes.push_back((v>>((B-1-b)*8))&0xFF);
 			}
 		} else {
 			for (size_t i = 0; i < length; ++i) {
-				auto v = array[i];
+				UIntType v = array[i];
 				for (size_t b = 0; b < B; ++b) bytes.push_back((v>>(b*8))&0xFF);
 			}
 		}
