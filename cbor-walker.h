@@ -154,6 +154,7 @@ struct CborWalker {
 			auto length = additional;
 			for (uint64_t i = 0; i < length; ++i) {
 				result = result.next();
+				result = result.next();
 			}
 			return result;
 		}
@@ -187,6 +188,7 @@ struct CborWalker {
 		case TypeCode::indefiniteMap: {
 			auto result = nextBasic();
 			while (!result.error() && result.typeCode != TypeCode::indefiniteBreak) {
+				result = result.next();
 				result = result.next();
 			}
 			return result.nextBasic();
@@ -369,10 +371,12 @@ struct CborWalker {
 	}
 
 	std::string utf8() const {
+		if (typeCode != TypeCode::utf8) return "";
 		return {(const char *)dataNext, length()};
 	}
 #ifdef CBOR_WALKER_USE_STRING_VIEW
 	std::string_view utf8View() const {
+		if (typeCode != TypeCode::utf8) return {nullptr, 0};
 		return {(const char *)dataNext, length()};
 	}
 #endif
@@ -387,7 +391,8 @@ struct CborWalker {
 			CborWalker item = enter();
 			for (size_t i = 0; i < count; ++i) {
 				if (item.error()) return item;
-				fn(item, i);
+				CborWalker value = item;
+				fn(value, i);
 				item = item.next();
 			}
 			return item;
@@ -395,7 +400,8 @@ struct CborWalker {
 			CborWalker item = enter();
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
-				fn(item, i);
+				CborWalker value = item;
+				fn(value, i);
 				item = item.next();
 				++i;
 			}
@@ -405,7 +411,8 @@ struct CborWalker {
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
 				if (item.typeCode != TypeCode::bytes) return {data, dataEnd, ERROR_INVALID_VALUE};
-				fn(item, i);
+				CborWalker value = item;
+				fn(value, i);
 				item = item.next();
 				++i;
 			}
@@ -415,7 +422,8 @@ struct CborWalker {
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
 				if (item.typeCode != TypeCode::utf8) return {data, dataEnd, ERROR_INVALID_VALUE};
-				fn(item, i);
+				CborWalker value = item;
+				fn(value, i);
 				item = item.next();
 				++i;
 			}
@@ -425,10 +433,11 @@ struct CborWalker {
 			CborWalker item = enter();
 			for (size_t i = 0; i < count; ++i) {
 				if (item.error()) return item;
-				if (!mapValues) fn(item, i);
+				CborWalker key = item;
 				item = item.next();
 				if (item.error()) return item;
-				if (mapValues) fn(item, i);
+				CborWalker value = item;
+				fn(mapValues ? value : key, i);
 				item = item.next();
 			}
 			return item;
@@ -436,11 +445,12 @@ struct CborWalker {
 			CborWalker item = enter();
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
-				if (!mapValues) fn(item, i);
+				CborWalker key = item;
 				item = item.next();
 				if (item.error()) return item;
 				if (item.isExit()) return {item.data, item.dataEnd, ERROR_INVALID_VALUE};
-				if (mapValues) fn(item, i);
+				CborWalker value = item;
+				fn(mapValues ? value : key, i);
 				item = item.next();
 				++i;
 			}
@@ -462,7 +472,8 @@ struct CborWalker {
 				auto key = item;
 				item = item.next();
 				if (key.error() || item.error()) return item;
-				fn(key, item);
+				auto value = item;
+				fn(key, value);
 				item = item.next();
 			}
 			return item;
@@ -473,7 +484,9 @@ struct CborWalker {
 				item = item.next();
 				if (key.error() || item.error()) return item;
 				if (item.isExit()) return {item.data, item.dataEnd, ERROR_INVALID_VALUE};
-				fn(key, item);
+				auto value = item;
+				fn(key, value);
+				fn(CborWalker(key), CborWalker(item));
 				item = item.next();
 			}
 			return item.next(); // move past the exit
@@ -489,7 +502,7 @@ struct CborWalker {
 		return typeCode == TypeCode::tag;
 	}
 	
-//protected:
+protected:
 	CborWalker(const unsigned char *data, const unsigned char *dataEnd, uint64_t errorCode) : data(data), dataEnd(dataEnd), dataNext(nullptr), typeCode(TypeCode::error), additional(errorCode) {}
 
 	// The next *core* value - but doesn't check whether the current value is the header for a string/array/etc.
@@ -514,15 +527,15 @@ struct CborWalker {
 // Automatically skips over tags, but still lets you query them
 struct TaggedCborWalker : public CborWalker {
 	TaggedCborWalker() {}
-	TaggedCborWalker(const CborWalker& basic) : CborWalker(basic), tagStart(basic.data) {
+	TaggedCborWalker(const CborWalker& basic) : CborWalker(basic), tagStart(data) {
 		consumeTags();
 	}
-	TaggedCborWalker(const unsigned char *dataStart, const unsigned char *dataEnd) : CborWalker(dataStart, dataEnd), tagStart(data) {
+	TaggedCborWalker(const unsigned char *dataStart, const unsigned char *dataEnd) : CborWalker(dataStart, dataEnd), tagStart(dataStart) {
 		consumeTags();
 	}
 	
-	TaggedCborWalker next() const {
-		return CborWalker::next();
+	TaggedCborWalker next(size_t i=1) const {
+		return CborWalker::next(i);
 	}
 	TaggedCborWalker enter() const {
 		return CborWalker::enter();
@@ -538,7 +551,7 @@ struct TaggedCborWalker : public CborWalker {
 	}
 	template<class Fn>
 	TaggedCborWalker forEachPair(Fn &&fn) const {
-		return CborWalker::forEachPair([&](CborWalker &key, CborWalker &value){
+		return CborWalker::forEachPair([&](const CborWalker &key, const CborWalker &value){
 			fn(TaggedCborWalker{key}, TaggedCborWalker{value});
 		});
 	}
@@ -555,16 +568,141 @@ struct TaggedCborWalker : public CborWalker {
 		return tagWalker;
 	}
 	
+	bool isTypedArray() const {
+		return isBytes() && typedArrayTag;
+	}
+	
+	size_t typedArrayLength() const {
+		uint8_t widthLog2 = typedArrayTag&0x03;
+		bool littleEndian = typedArrayTag&0x04;
+		uint8_t elementType = (typedArrayTag&0x18)>>3; // unsigned, signed, float
+		widthLog2 += (elementType == 2); // int sizes are 8-64 bits, float sizes are 16-128
+		size_t stride = 1<<widthLog2;
+		return length()/stride;
+	}
+	
+	template<class Array>
+	size_t readTypedArray(Array &&array) const {
+		return readTypedArray(array, 0, typedArrayLength());
+	}
+
+	template<class Array>
+	size_t readTypedArray(Array &&array, size_t offset, size_t maxCount) const {
+		size_t byteLength = length();
+		
+		bool bigEndian = !(typedArrayTag&0x04);
+		
+		switch (typedArrayTag&0xFB) { // without endian flag
+		// unsigned int
+		case 64: {
+			size_t count = std::min(maxCount, byteLength);
+			const uint8_t *bytes = dataNext + offset;
+			for (size_t i = 0; i < count; ++i) {
+				array[i] = bytes[i];
+			}
+			return count;
+		}
+		case 65:
+			return typedArrayReadInner<Array, uint16_t, uint16_t>(array, offset, maxCount, bigEndian);
+		case 66:
+			return typedArrayReadInner<Array, uint32_t, uint32_t>(array, offset, maxCount, bigEndian);
+		case 67:
+			return typedArrayReadInner<Array, uint64_t, uint64_t>(array, offset, maxCount, bigEndian);
+		// signed int
+		case 72: {
+			size_t count = std::min(maxCount, byteLength);
+			const uint8_t *bytes = dataNext + offset;
+			for (size_t i = 0; i < count; ++i) {
+				array[i] = (int8_t)bytes[i]; // cast to signed here first, to make sure negatives behave correctly
+			}
+			return count;
+		}
+		case 73:
+			return typedArrayReadInner<Array, uint16_t, int16_t>(array, offset, maxCount, bigEndian);
+		case 74:
+			return typedArrayReadInner<Array, uint32_t, int32_t>(array, offset, maxCount, bigEndian);
+		case 75:
+			return typedArrayReadInner<Array, uint64_t, int64_t>(array, offset, maxCount, bigEndian);
+		// floating-point
+		case 80:
+			// TODO: half-precision float support
+			return 0;
+		case 81:
+			return typedArrayReadInner<Array, uint32_t, float, true>(array, offset, maxCount, bigEndian);
+		case 82:
+			return typedArrayReadInner<Array, uint64_t, double, true>(array, offset, maxCount, bigEndian);
+		case 83:
+			// TODO: quad-precision float support
+			return 0;
+		default:
+			return 0;
+		}
+	}
+
 private:
 	size_t nTags = 0;
 	const unsigned char *tagStart;
 	
+	uint8_t typedArrayTag = 0;
+	
 	void consumeTags() {
 		while (isTagged() && data < dataEnd) {
 			++nTags;
+			uint64_t tag = (*this);
+			if (tag >= 64 && tag < 87) { // RFC-8746 range
+				typedArrayTag = tag;
+			}
 			// Move "into" the tag
 			CborWalker::operator=(enter());
 		}
+	}
+	
+	template<class Array, typename UIntType, typename ResultT, bool bitcast=false>
+	size_t typedArrayReadInner(Array &&array, size_t offset, size_t maxCount, bool bigEndian) const {
+		constexpr size_t B = sizeof(UIntType);
+		if (offset*B > length()) return 0;
+		const uint8_t *bytes = dataNext + offset*B;
+		size_t count = std::min(maxCount, length()/B - offset);
+		if (bigEndian) {
+			for (size_t i = 0; i < count; ++i) {
+				UIntType v = 0;
+				for (size_t b = 0; b < B; ++b) {
+					UIntType bv = bytes[i*B + b];
+					v += bv<<((B - 1 - b)*8);
+				}
+				if (bitcast) {
+#ifdef CBOR_WALKER_USE_BIT_CAST
+					array[i] = std::bit_cast<ResultT>(v);
+#else
+					ResultT r;
+					std::memcpy(&r, &v, B);
+					array[i] = r;
+#endif
+				} else {
+					array[i] = (ResultT)v;
+				}
+			}
+		} else {
+			for (size_t i = 0; i < count; ++i) {
+				UIntType v = 0;
+				for (size_t b = 0; b < B; ++b) {
+					UIntType bv = bytes[i*B + b];
+					v += bv<<(b*8);
+				}
+				if (bitcast) {
+#ifdef CBOR_WALKER_USE_BIT_CAST
+					array[i] = std::bit_cast<ResultT>(v);
+#else
+					ResultT r;
+					std::memcpy(&r, &v, B);
+					array[i] = r;
+#endif
+				} else {
+					array[i] = (ResultT)v;
+				}
+			}
+		}
+		return count;
 	}
 };
 
@@ -660,6 +798,7 @@ struct CborWriter {
 	}
 	
 	// RFC-8746 tags for typed arrays
+	// bits: [1, 0] = log2(elementBytes),  [2] = isLittleEndian, [3, 4] = [unsigned, signed, float]
 	void addTypedArray(const uint8_t *arr, size_t length) {
 		addTag(64);
 		addBytes((const void *)arr, length);
