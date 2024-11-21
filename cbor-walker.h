@@ -21,6 +21,7 @@ namespace signalsmith { namespace cbor {
 
 struct CborWalker {
 	CborWalker() : CborWalker(nullptr, nullptr, ERROR_NOT_INITIALISED) {}
+	CborWalker(const std::vector<unsigned char> &vector) : CborWalker(vector.data(), vector.data() + vector.size()) {}
 	CborWalker(const unsigned char *data, const unsigned char *dataEnd) : data(data), dataEnd(dataEnd) {
 		if (data >= dataEnd) {
 			typeCode = TypeCode::error;
@@ -35,6 +36,7 @@ struct CborWalker {
 			additional = data[1];
 			dataNext = data + 2;
 			break;
+#ifdef CBOR_WALKER_HALF_PRECISION_FLOAT
 		case 25:
 			if (typeCode == TypeCode::simple) {
 				// Translated from RFC 8949 Appendix D
@@ -56,6 +58,7 @@ struct CborWalker {
 			}
 			dataNext = data + 3;
 			break;
+#endif
 		case 26:
 			if (typeCode == TypeCode::simple) {
 				typeCode = TypeCode::float32;
@@ -574,7 +577,6 @@ struct TaggedCborWalker : public CborWalker {
 	
 	size_t typedArrayLength() const {
 		uint8_t widthLog2 = typedArrayTag&0x03;
-		bool littleEndian = typedArrayTag&0x04;
 		uint8_t elementType = (typedArrayTag&0x18)>>3; // unsigned, signed, float
 		widthLog2 += (elementType == 2); // int sizes are 8-64 bits, float sizes are 16-128
 		size_t stride = 1<<widthLog2;
