@@ -36,9 +36,9 @@ struct CborWalker {
 			additional = data[1];
 			dataNext = data + 2;
 			break;
-#ifdef CBOR_WALKER_HALF_PRECISION_FLOAT
 		case 25:
 			if (typeCode == TypeCode::simple) {
+#ifdef CBOR_WALKER_HALF_PRECISION_FLOAT
 				// Translated from RFC 8949 Appendix D
 				uint16_t half = ((uint16_t)data[1]<<8) + data[2];
 				uint16_t exponent = (half>>10)&0x001F;
@@ -53,12 +53,14 @@ struct CborWalker {
 				}
 				typeCode = TypeCode::float32;
 				float32 = (half&0x8000) ? -value : value;
+#else
+				float32 = 0;
+#endif
 			} else {
 				additional = (uint64_t(data[1])<<8)|uint64_t(data[2]);
 			}
 			dataNext = data + 3;
 			break;
-#endif
 		case 26:
 			if (typeCode == TypeCode::simple) {
 				typeCode = TypeCode::float32;
