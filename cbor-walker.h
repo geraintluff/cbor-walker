@@ -352,6 +352,10 @@ struct CborWalker {
 				return float32;
 			case TypeCode::float64:
 				return float64;
+			case TypeCode::integerP:
+				return (uint64_t)(*this);
+			case TypeCode::integerN:
+				return (int64_t)(*this);
 			default:
 				return 0;
 		}
