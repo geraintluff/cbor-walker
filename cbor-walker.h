@@ -270,6 +270,10 @@ struct CborWalker {
 		return typeCode == TypeCode::error && additional == ERROR_END_OF_DATA;
 	}
 
+	bool isNumber() const {
+		return isFloat() || isInt();
+	}
+
 	bool isInt() const {
 		return typeCode == TypeCode::integerP || typeCode == TypeCode::integerN;
 	}
