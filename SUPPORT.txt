@@ -1,3 +1,3 @@
-# This is a wildly experimental project written in one evening.  Although it parses all the test-cases from RFC-8949, that's not a guarantee.
+# This has been used a little bit, but it's still a bit experimental.  Although it parses all the test-cases from RFC-8949, that's not a guarantee.
 
-2024-11-01 Geraint <luffgd@gmail.com>
+2025-04-01 Geraint <luffgd@gmail.com>
