@@ -20,7 +20,7 @@
 namespace signalsmith { namespace cbor {
 
 struct CborWalker {
-	CborWalker() : CborWalker(nullptr, nullptr, ERROR_NOT_INITIALISED) {}
+	CborWalker(uint64_t errorCode=ERROR_NOT_INITIALISED) : CborWalker(nullptr, nullptr, errorCode) {}
 	CborWalker(const std::vector<unsigned char> &vector) : CborWalker(vector.data(), vector.data() + vector.size()) {}
 	CborWalker(const unsigned char *data, const unsigned char *dataEnd) : data(data), dataEnd(dataEnd) {
 		if (data >= dataEnd) {
@@ -117,7 +117,7 @@ struct CborWalker {
 		}
 	}
 	
-	// All error codes are positive, so can be checked with `.error()`
+	// All error codes are non-zero, so can be checked with `.error()`
 	static constexpr uint64_t ERROR_END_OF_DATA = 1;
 	static constexpr uint64_t ERROR_INVALID_ADDITIONAL = 2;
 	static constexpr uint64_t ERROR_INVALID_VALUE = 3;
