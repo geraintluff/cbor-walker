@@ -8,6 +8,8 @@
 #	define UINT64_MAX 0xFFFFFFFFFFFFFFFFull;
 #endif
 
+#include <vector>
+#include <string>
 #if __cplusplus >= 201703L
 #	define CBOR_WALKER_USE_STRING_VIEW
 #	include <string_view>
@@ -769,6 +771,14 @@ struct CborWriter {
 	void addUtf8(const char *str) {
 		addUtf8(str, std::strlen(str));
 	}
+	void addUtf8(const std::string &str) {
+		addUtf8(str.c_str());
+	}
+#ifdef CBOR_WALKER_USE_STRING_VIEW
+	void addUtf8(const std::string_view &str) {
+		addUtf8(str.data(), str.size());
+	}
+#endif
 	void openUtf8() {
 		bytes.push_back(0x7F);
 	}
