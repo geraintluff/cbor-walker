@@ -131,7 +131,7 @@ struct CborWalker {
 	CborWalker next(size_t count) const {
 		CborWalker result = *this;
 		for (size_t i = 0; i < count; ++i) {
-			result = result.next();
+			++result;
 		}
 		return result;
 	}
@@ -152,7 +152,7 @@ struct CborWalker {
 			auto result = nextBasic();
 			auto length = additional;
 			for (uint64_t i = 0; i < length; ++i) {
-				result = result.next();
+				++result;
 			}
 			return result;
 		}
@@ -160,8 +160,8 @@ struct CborWalker {
 			auto result = nextBasic();
 			auto length = additional;
 			for (uint64_t i = 0; i < length; ++i) {
-				result = result.next();
-				result = result.next();
+				++result;
+				++result;
 			}
 			return result;
 		}
@@ -171,7 +171,7 @@ struct CborWalker {
 				if (result.typeCode != TypeCode::bytes) {
 					return {data, dataEnd, ERROR_INCONSISTENT_INDEFINITE};
 				}
-				result = result.next();
+				++result;
 			}
 			return result.nextBasic();
 		}
@@ -181,7 +181,7 @@ struct CborWalker {
 				if (result.typeCode != TypeCode::utf8) {
 					return {data, dataEnd, ERROR_INCONSISTENT_INDEFINITE};
 				}
-				result = result.next();
+				++result;
 			}
 			return result.nextBasic();
 		}
@@ -195,8 +195,8 @@ struct CborWalker {
 		case TypeCode::indefiniteMap: {
 			auto result = nextBasic();
 			while (!result.error() && result.typeCode != TypeCode::indefiniteBreak) {
-				result = result.next();
-				result = result.next();
+				++result;
+				++result;
 			}
 			return result.nextBasic();
 		}
@@ -209,6 +209,19 @@ struct CborWalker {
 		case TypeCode::error:
 			return *this;
 		}
+	}
+
+	// ++Prefix increments the position, and returns itself
+	CborWalker & operator++() {
+		*this = next();
+		return *this;
+	}
+
+	// Postfix++ increments the position, but returns the old position
+	CborWalker operator++(int) {
+		CborWalker result = *this;
+		*this = next();
+		return result;
 	}
 
 	CborWalker enter() const {
@@ -238,7 +251,7 @@ struct CborWalker {
 	CborWalker nextExit() const {
 		CborWalker result = *this;
 		while (!result.error() && !result.isExit()) {
-			result = result.next();
+			++result;
 		}
 		return result.nextBasic();
 	}
@@ -406,19 +419,15 @@ struct CborWalker {
 			CborWalker item = enter();
 			for (size_t i = 0; i < count; ++i) {
 				if (item.error()) return item;
-				CborWalker value = item;
+				CborWalker value = item++;
 				fn(value, i);
-				item = item.next();
 			}
 			return item;
 		} else if (typeCode == TypeCode::indefiniteArray) {
 			CborWalker item = enter();
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
-				CborWalker value = item;
-				fn(value, i);
-				item = item.next();
-				++i;
+				fn(item++, i++);
 			}
 			return item.next(); // move past the exit
 		} else if (typeCode == TypeCode::indefiniteBytes) {
@@ -426,10 +435,7 @@ struct CborWalker {
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
 				if (item.typeCode != TypeCode::bytes) return {data, dataEnd, ERROR_INVALID_VALUE};
-				CborWalker value = item;
-				fn(value, i);
-				item = item.next();
-				++i;
+				fn(item++, i++);
 			}
 			return item.next(); // move past the exit
 		} else if (typeCode == TypeCode::indefiniteUtf8) {
@@ -437,10 +443,7 @@ struct CborWalker {
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
 				if (item.typeCode != TypeCode::utf8) return {data, dataEnd, ERROR_INVALID_VALUE};
-				CborWalker value = item;
-				fn(value, i);
-				item = item.next();
-				++i;
+				fn(item++, i++);
 			}
 			return item.next(); // move past the exit
 		} else if (typeCode == TypeCode::map) {
@@ -448,25 +451,21 @@ struct CborWalker {
 			CborWalker item = enter();
 			for (size_t i = 0; i < count; ++i) {
 				if (item.error()) return item;
-				CborWalker key = item;
-				item = item.next();
+				CborWalker key = item++;
 				if (item.error()) return item;
-				CborWalker value = item;
+				CborWalker value = item++;
 				fn(mapValues ? value : key, i);
-				item = item.next();
 			}
 			return item;
 		} else if (typeCode == TypeCode::indefiniteMap) {
 			CborWalker item = enter();
 			size_t i = 0;
 			while (!item.error() && !item.isExit()) {
-				CborWalker key = item;
-				item = item.next();
+				CborWalker key = item++;
 				if (item.error()) return item;
 				if (item.isExit()) return {item.data, item.dataEnd, ERROR_INVALID_VALUE};
-				CborWalker value = item;
+				CborWalker value = item++;
 				fn(mapValues ? value : key, i);
-				item = item.next();
 				++i;
 			}
 			return item.next(); // move past the exit
@@ -484,25 +483,20 @@ struct CborWalker {
 			size_t count = length();
 			CborWalker item = enter();
 			for (size_t i = 0; i < count; ++i) {
-				auto key = item;
-				item = item.next();
+				auto key = item++;
 				if (key.error() || item.error()) return item;
-				auto value = item;
+				auto value = item++;
 				fn(key, value);
-				item = item.next();
 			}
 			return item;
 		} else if (typeCode == TypeCode::indefiniteMap) {
 			CborWalker item = enter();
 			while (!item.error() && !item.isExit()) {
-				auto key = item;
-				item = item.next();
+				auto key = item++;
 				if (key.error() || item.error()) return item;
 				if (item.isExit()) return {item.data, item.dataEnd, ERROR_INVALID_VALUE};
-				auto value = item;
-				fn(key, value);
-				fn(CborWalker(key), CborWalker(item));
-				item = item.next();
+				auto value = item++;
+				fn(CborWalker(key), CborWalker(value));
 			}
 			return item.next(); // move past the exit
 		}
@@ -552,6 +546,13 @@ struct TaggedCborWalker : public CborWalker {
 	TaggedCborWalker next(size_t i=1) const {
 		return CborWalker::next(i);
 	}
+	TaggedCborWalker & operator++() {
+		CborWalker::operator++();
+		return *this;
+	}
+	TaggedCborWalker operator++(int _) {
+		return CborWalker::operator++(_);
+	}
 	TaggedCborWalker enter() const {
 		return CborWalker::enter();
 	}
@@ -560,7 +561,7 @@ struct TaggedCborWalker : public CborWalker {
 	}
 	template<class Fn>
 	TaggedCborWalker forEach(Fn &&fn) const {
-		return CborWalker::forEach([&](CborWalker &item, size_t i){
+		return CborWalker::forEach([&](const CborWalker &item, size_t i){
 			fn(TaggedCborWalker{item}, i);
 		});
 	}
