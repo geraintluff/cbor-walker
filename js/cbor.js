@@ -114,6 +114,10 @@ let CBOR = {
 				let index = writeUint(2, value.byteLength, value.byteLength);
 				// Copy bytes over
 				(new Uint8Array(currentBuffer)).set(new Uint8Array(value), index);
+			} else if (value instanceof DataView) {
+				let index = writeUint(2, value.byteLength, value.byteLength);
+				// Copy bytes over
+				(new Uint8Array(currentBuffer)).set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength), index);
 			} else if (Array.isArray(value)) {
 				writeUint(4, value.length, 0);
 				value.forEach(write);
@@ -344,8 +348,6 @@ let CBOR = {
 			return -1n - result;
 		},
 		32: url => new URL(url),
-		64: uint8 => uint8,
-		72: uint8 => new Int8Array(uint8.buffer, uint8.byteOffset, uint8.length),
 		258: array => new Set(array)
 	},
 	
@@ -376,13 +378,79 @@ let CBOR = {
 		return CBOR.decode(bytes);
 	}
 };
-Date.prototype[CBOR.encodeTag] = date => [1, +date/1000];
-URL.prototype[CBOR.encodeTag] = url => [32, url.href];
-Set.prototype[CBOR.encodeTag] = s => [258, Array.from(s)];
-Uint8Array.prototype[CBOR.encodeTag] = array => [64, array.buffer];
-Int8Array.prototype[CBOR.encodeTag] = array => [72, array.buffer];
 for (let i = 0; i < 256; ++i) CBOR.simple[i] = Symbol(`CBOR ${i}`);
 CBOR.simple[20] = false;
 CBOR.simple[21] = true;
 CBOR.simple[22] = null;
 CBOR.simple[23] = void 0;
+
+((encodeTag, platformBE) => {
+	Date.prototype[encodeTag] = date => [1, +date/1000];
+	URL.prototype[encodeTag] = url => [32, url.href];
+	Set.prototype[encodeTag] = s => [258, Array.from(s)];
+	
+	function dataView(array) {
+		return new DataView(array.buffer, array.byteOffset, array.byteLength);
+	}
+	
+	let hasFloat16 = (typeof Float16Array === 'function');
+	
+	Uint8Array.prototype[encodeTag] = array => [64, dataView(array)];
+	Int8Array.prototype[encodeTag] = array => [72, dataView(array)];
+	Uint16Array.prototype[encodeTag] = array => [platformBE ? 65 : 69, dataView(array)];
+	Int16Array.prototype[encodeTag] = array => [platformBE ? 73 : 77, dataView(array)];
+	Uint32Array.prototype[encodeTag] = array => [platformBE ? 66 : 70, dataView(array)];
+	Int32Array.prototype[encodeTag] = array => [platformBE ? 74 : 78, dataView(array)];
+	BigUint64Array.prototype[encodeTag] = array => [platformBE ? 67 : 71, dataView(array)];
+	BigInt64Array.prototype[encodeTag] = array => [platformBE ? 75 : 79, dataView(array)];
+	if (hasFloat16) Float16Array.prototype[encodeTag] = array => [platformBE ? 80 : 84, dataView(array)];
+	Float32Array.prototype[encodeTag] = array => [platformBE ? 81 : 85, dataView(array)];
+	Float64Array.prototype[encodeTag] = array => [platformBE ? 82 : 86, dataView(array)];
+	// There isn't a Float128Array in JS
+
+	function endianSwap(array, stride) {
+		for (let i = 0; i < array.length; i += stride) {
+			for (let k = 0; k < stride/2; ++k) {
+				let k2 = stride - 1 - k;
+				let tmp = array[i + k];
+				array[i + k] = array[i + k2];
+				array[i + k2] = tmp;
+			}
+		}
+	}
+	let makeEndian = (TypedArray, be) => {
+		const stride = TypedArray.BYTES_PER_ELEMENT;
+		return bytes => {
+			if (bytes.byteOffset%stride || be != platformBE) {
+				bytes = bytes.slice(); // fix alignment by making a copy
+			}
+			if (be != platformBE) {
+				endianSwap(bytes, stride);
+			}
+			return new TypedArray(bytes.buffer, bytes.byteOffset, bytes.length/stride);
+		};
+	};
+	Object.assign(CBOR.decodeTags, {
+		64: a => a,
+		65: makeEndian(Uint16Array, true),
+		66: makeEndian(Uint32Array, true),
+		67: makeEndian(BigUint64Array, true),
+		69: makeEndian(Uint16Array, false),
+		70: makeEndian(Uint32Array, false),
+		71: makeEndian(BigUint64Array, false),
+		72: a => new Int8Array(a.buffer, a.byteOffset, a.length),
+		73: makeEndian(Int16Array, true),
+		74: makeEndian(Int32Array, true),
+		75: makeEndian(BigInt64Array, true),
+		77: makeEndian(Int16Array, false),
+		78: makeEndian(Int32Array, false),
+		79: makeEndian(BigInt64Array, false),
+		80: hasFloat16 && makeEndian(Float16Array, true),
+		81: makeEndian(Float32Array, true),
+		82: makeEndian(Float64Array, true),
+		84: hasFloat16 && makeEndian(Float16Array, false),
+		85: makeEndian(Float32Array, false),
+		86: makeEndian(Float64Array, false)
+	});
+})(CBOR.encodeTag, !!new Uint8Array(new Uint16Array([256]).buffer)[0]);
+if (typeof module === 'object' && module?.exports) module.exports = CBOR;

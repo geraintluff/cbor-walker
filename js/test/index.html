@@ -9,7 +9,7 @@
 				document.body.innerHTML = '❌ failed';
 			});
 		</script>
-		<script src="cbor.js"></script>
+		<script src="../cbor.js"></script>
 		<script src="tests.js"></script>
 		<script>
 			function assertDeepEqual(a, b) {
@@ -46,7 +46,7 @@
 				
 				if (test.roundTrip) {
 					let hex2 = CBOR.encode16(test.data);
-					if (hex2 != hex) {
+					if (hex2.toLowerCase() != hex.toLowerCase()) {
 						console.error(hex, hex2);
 						throw Error("round-trip encode doesn't match");
 					}
