@@ -6,6 +6,8 @@ let CBOR = {
 		let data = new DataView(currentBuffer);
 		let buffers = [currentBuffer];
 		
+		let encodeTag = CBOR.encodeTag;
+		
 		function writeHead(typeCode, remainder, extraBytes) {
 			let bytes = 1 + extraBytes;
 			if (currentBuffer.byteLength + bytes > currentBuffer.maxByteLength) {
@@ -115,15 +117,28 @@ let CBOR = {
 			} else if (Array.isArray(value)) {
 				writeUint(4, value.length, 0);
 				value.forEach(write);
-			} else if (ArrayBuffer.isView(value)) {
-				throw Error("not implemented");
 			} else if (typeof value === 'object') {
-				let keys = Object.keys(value);
-				writeHead(5, keys.length, 0);
-				keys.forEach(key => {
-					write(key);
-					write(value[key]);
-				});
+				if (encodeTag in value) {
+					let pair = value[encodeTag](value);
+					writeUint(6, pair[0], 0); // semantic tag
+					return write(pair[1]);
+				} else if (ArrayBuffer.isView(value)) {
+					throw Error("not implemented");
+				} else { // write it as a map
+					let keys = Object.keys(value);
+					writeHead(5, keys.length, 0);
+					keys.forEach(key => {
+						write(key);
+						write(value[key]);
+					});
+				}
+			} else {
+				for (let i = 0; i < 256; ++i) {
+					if (value === CBOR.simple[i]) {
+						return writeUint(7, i, 0);
+					}
+				}
+				throw Error("unknown simple value");
 			}
 		}
 		write(value);
@@ -142,25 +157,6 @@ let CBOR = {
 		return result;
 	},
 
-	encodeTag: Symbol(),
-	decodeTags: {
-		2: arrayBuffer => {
-			let result = 0n;
-			let bytes = new Uint8Array(arrayBuffer);
-			for (let i = 0; i < bytes.length; ++i) {
-				result = result*256n + BigInt(bytes[i]);
-			}
-			return result;
-		},
-		3: arrayBuffer => {
-			let result = 0n;
-			let bytes = new Uint8Array(arrayBuffer);
-			for (let i = 0; i < bytes.length; ++i) {
-				result = result*256n + BigInt(bytes[i]);
-			}
-			return -1n - result;
-		}
-	},
 	decode(data) {
 		let tags = CBOR.decodeTags;
 		let index = 0;
@@ -206,11 +202,8 @@ let CBOR = {
 					let value = next();
 					return tags[additional] ? tags[additional](value) : value;
 				case 7: // simple value
-					if (additional == 20) return false;
-					if (additional == 21) return true;
-					if (additional == 22) return null;
-					if (additional == 23) return void 0;
-					throw Error("unsupported simple value");
+					if (additional >= 256) throw Error("invalid simple value");
+					return CBOR.simple[additional];
 				default:
 			}
 		}
@@ -224,6 +217,34 @@ let CBOR = {
 		}
 		function makeIndefinite(typeCode) {
 			switch (typeCode) {
+				case 2: {
+					let buffers = [];
+					let length = 0;
+					let item = next();
+					while (item != breakCode) {
+						if (!(item instanceof ArrayBuffer)) throw Error("indefinite bytes with non-byte item");
+						buffers.push(item);
+						length += item.byteLength;
+						item = next();
+					}
+					let array8 = new Uint8Array(length);
+					let index = 0;
+					buffers.forEach(b => {
+						array8.set(new Uint8Array(b), index);
+						index += b.byteLength;
+					});
+					return array8.buffer;
+				}
+				case 3: {
+					let result = "";
+					let item = next();
+					while (item != breakCode) {
+						if (typeof item !== 'string') throw Error("indefinite string with non-string item");
+						result += item;
+						item = next();
+					}
+					return result;
+				}
 				case 4: {
 					let array = [];
 					let item = next();
@@ -302,6 +323,34 @@ let CBOR = {
 		return value;
 	},
 	
+	// Simple values
+	simple: [],
+
+	// Semantic tags
+	encodeTag: Symbol(), // if defined on an object, function mapping: value => [tag, value]
+	decodeTags: {
+		0: isoString => new Date(isoString),
+		1: epochSeconds => new Date(epochSeconds*1000),
+		2: arrayBuffer => {
+			let result = 0n;
+			let bytes = new Uint8Array(arrayBuffer);
+			for (let i = 0; i < bytes.length; ++i) {
+				result = result*256n + BigInt(bytes[i]);
+			}
+			return result;
+		},
+		3: arrayBuffer => {
+			let result = 0n;
+			let bytes = new Uint8Array(arrayBuffer);
+			for (let i = 0; i < bytes.length; ++i) {
+				result = result*256n + BigInt(bytes[i]);
+			}
+			return -1n - result;
+		},
+		32: url => new URL(url),
+		258: array => new Set(array)
+	},
+	
 	// Helpers for hex / base64 encoding
 	encode16(value, optionalBuffer) {
 		let bytes = new Uint8Array(CBOR.encode(value, optionalBuffer));
@@ -329,3 +378,11 @@ let CBOR = {
 		return CBOR.decode(bytes);
 	}
 };
+Date.prototype[CBOR.encodeTag] = date => [1, +date/1000];
+URL.prototype[CBOR.encodeTag] = url => [32, url.href];
+Set.prototype[CBOR.encodeTag] = s => [258, Array.from(s)];
+for (let i = 0; i < 256; ++i) CBOR.simple[i] = Symbol(`CBOR ${i}`);
+CBOR.simple[20] = false;
+CBOR.simple[21] = true;
+CBOR.simple[22] = null;
+CBOR.simple[23] = void 0;
