@@ -7,7 +7,61 @@
 #include <string>
 #include <sstream>
 
+#include <iomanip>
+template<class T>
+void printTypedArray(const char *name, size_t endianCount=2) {
+	for (size_t bigEndian = 0; bigEndian < endianCount; ++bigEndian) {
+		std::vector<unsigned char> writeBytes;
+		signalsmith::cbor::CborWriter writer(writeBytes);
+		
+		std::vector<T> vector;
+		double v = M_PI;
+		for (size_t i = 0; i < 6; ++i) {
+			vector.push_back(T(v));
+			v *= -std::abs(v);
+		}
+		if constexpr (sizeof(T) == 1) {
+			writer.addTypedArray(vector.data(), vector.size());
+		} else {
+			writer.addTypedArray(vector.data(), vector.size(), bigEndian);
+		}
+
+		std::cout << std::scientific << std::setprecision(20);
+		std::cout << "{cbor: \"";
+		for (size_t i = 0; i < writeBytes.size(); ++i) {
+			unsigned char byte = writeBytes[i];
+			unsigned char hex[3] = {(unsigned char)(byte>>4), (unsigned char)(byte&0x0F), 0};
+			hex[0] += (hex[0] < 10) ? '0' : ('A' - 10);
+			hex[1] += (hex[1] < 10) ? '0' : ('A' - 10);
+			
+			std::cout << hex;
+		}
+		std::cout << "\", data: new " << name << "Array([";
+		for (size_t i = 0; i < vector.size(); ++i) {
+			if (i) std::cout << ",";
+			if (sizeof(T) == 1) {
+				std::cout << int(vector[i]);
+			} else {
+				std::cout << vector[i];
+			}
+		}
+		std::cout << "]), roundTrip: " << (bigEndian ? "!bigEndian" : "bigEndian") << "},\n";
+	}
+}
+
 int main() {
+	printTypedArray<uint8_t>("Uint8", 1);
+	printTypedArray<int8_t>("Int8", 1);
+	printTypedArray<uint16_t>("Uint16");
+	printTypedArray<int16_t>("Int16");
+	printTypedArray<uint32_t>("Uint32");
+	printTypedArray<int32_t>("Int32");
+	printTypedArray<uint64_t>("BigUint64Array");
+	printTypedArray<int64_t>("BigInt64Array");
+	printTypedArray<float>("Float32");
+	printTypedArray<double>("Float64");
+	return 0;
+
 	std::vector<unsigned char> bytes;
 	
 	signalsmith::cbor::CborWalker cbor;

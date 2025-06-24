@@ -122,8 +122,6 @@ let CBOR = {
 					let pair = value[encodeTag](value);
 					writeUint(6, pair[0], 0); // semantic tag
 					return write(pair[1]);
-				} else if (ArrayBuffer.isView(value)) {
-					throw Error("not implemented");
 				} else { // write it as a map
 					let keys = Object.keys(value);
 					writeHead(5, keys.length, 0);
@@ -169,14 +167,13 @@ let CBOR = {
 		
 		let breakCode = CBOR.breakCode;
 		
-		function makeValue(typeCode, additional) {
+		function makeValue(typeCode, additional, uint8Bytes) {
 			switch (typeCode) {
 				case 0: return additional;
 				case 1: return -1 - additional;
 				case 2: {
-					let result = data.buffer.slice(index, index + additional);
+					let result = uint8Bytes ? new Uint8Array(data.buffer, index, additional) : data.buffer.slice(index, index + additional);
 					index += additional;
-					if (typeCode == 3) return new TextDecoder(result);
 					return result;
 				}
 				case 3: {
@@ -199,15 +196,17 @@ let CBOR = {
 					return map;
 				}
 				case 6: // semantic tag
-					let value = next();
-					return tags[additional] ? tags[additional](value) : value;
+					if (tags[additional]) {
+						return tags[additional](next(true));
+					}
+					return next();
 				case 7: // simple value
 					if (additional >= 256) throw Error("invalid simple value");
 					return CBOR.simple[additional];
 				default:
 			}
 		}
-		function makeValue64(typeCode, additional) {
+		function makeValue64(typeCode, additional, uint8Bytes) {
 			switch (typeCode) {
 				case 0: return additional;
 				case 1: return -1n - additional;
@@ -215,25 +214,25 @@ let CBOR = {
 					throw Error("unsupported type for 8-byte length");
 			}
 		}
-		function makeIndefinite(typeCode) {
+		function makeIndefinite(typeCode, uint8Bytes) {
 			switch (typeCode) {
 				case 2: {
 					let buffers = [];
 					let length = 0;
-					let item = next();
+					let item = next(true); // returns the bytes as Uint8Array
 					while (item != breakCode) {
-						if (!(item instanceof ArrayBuffer)) throw Error("indefinite bytes with non-byte item");
+						if (!(item instanceof Uint8Array)) throw Error("indefinite bytes with non-byte item");
 						buffers.push(item);
-						length += item.byteLength;
-						item = next();
+						length += item.length;
+						item = next(true);
 					}
 					let array8 = new Uint8Array(length);
 					let index = 0;
 					buffers.forEach(b => {
-						array8.set(new Uint8Array(b), index);
-						index += b.byteLength;
+						array8.set(b, index);
+						index += b.length;
 					});
-					return array8.buffer;
+					return uint8Bytes ? array8 : array8.buffer;
 				}
 				case 3: {
 					let result = "";
@@ -267,12 +266,12 @@ let CBOR = {
 				default: throw Error("invalid indefinite type");
 			}
 		}
-		function next() {
+		function next(uint8Bytes=false) {
 			if (index >= maxIndex) throw Error("end of CBOR");
 			let head = data.getUint8(index++);
 			let typeCode = head>>5, remainder = head&0x1f;
 			switch(remainder) {
-				case 24: return makeValue(typeCode, data.getUint8(index++));
+				case 24: return makeValue(typeCode, data.getUint8(index++), uint8Bytes);
 				case 25:
 					if (typeCode == 7) {
 						let v = data.getFloat16(index);
@@ -281,7 +280,7 @@ let CBOR = {
 					} else {
 						let additional = data.getUint16(index);
 						index += 2;
-						return makeValue(typeCode, additional);
+						return makeValue(typeCode, additional, uint8Bytes);
 					}
 				case 26: {
 					if (typeCode == 7) {
@@ -291,7 +290,7 @@ let CBOR = {
 					} else {
 						let additional = data.getUint32(index);
 						index += 4;
-						return makeValue(typeCode, additional);
+						return makeValue(typeCode, additional, uint8Bytes);
 					}
 				}
 				case 27: {
@@ -303,9 +302,9 @@ let CBOR = {
 						let additional = data.getBigUint64(index);
 						index += 4;
 						if (additional < Number.MAX_SAFE_INTEGER) {
-							return makeValue(typeCode, Number(additional));
+							return makeValue(typeCode, Number(additional), uint8Bytes);
 						} else {
-							return makeValue64(typeCode, additional);
+							return makeValue64(typeCode, additional, uint8Bytes);
 						}
 					}
 				}
@@ -314,13 +313,12 @@ let CBOR = {
 				case 30:
 					throw Error("invalid additional CBOR code");
 				case 31:
-					return makeIndefinite(typeCode);
+					return makeIndefinite(typeCode, uint8Bytes);
 				default:
-					return makeValue(typeCode, remainder);
+					return makeValue(typeCode, remainder, uint8Bytes);
 			}
 		}
-		let value = next();
-		return value;
+		return next();
 	},
 	
 	// Simple values
@@ -331,23 +329,23 @@ let CBOR = {
 	decodeTags: {
 		0: isoString => new Date(isoString),
 		1: epochSeconds => new Date(epochSeconds*1000),
-		2: arrayBuffer => {
+		2: bytes => {
 			let result = 0n;
-			let bytes = new Uint8Array(arrayBuffer);
 			for (let i = 0; i < bytes.length; ++i) {
 				result = result*256n + BigInt(bytes[i]);
 			}
 			return result;
 		},
-		3: arrayBuffer => {
+		3: bytes => {
 			let result = 0n;
-			let bytes = new Uint8Array(arrayBuffer);
 			for (let i = 0; i < bytes.length; ++i) {
 				result = result*256n + BigInt(bytes[i]);
 			}
 			return -1n - result;
 		},
 		32: url => new URL(url),
+		64: uint8 => uint8,
+		72: uint8 => new Int8Array(uint8.buffer, uint8.byteOffset, uint8.length),
 		258: array => new Set(array)
 	},
 	
@@ -381,6 +379,8 @@ let CBOR = {
 Date.prototype[CBOR.encodeTag] = date => [1, +date/1000];
 URL.prototype[CBOR.encodeTag] = url => [32, url.href];
 Set.prototype[CBOR.encodeTag] = s => [258, Array.from(s)];
+Uint8Array.prototype[CBOR.encodeTag] = array => [64, array.buffer];
+Int8Array.prototype[CBOR.encodeTag] = array => [72, array.buffer];
 for (let i = 0; i < 256; ++i) CBOR.simple[i] = Symbol(`CBOR ${i}`);
 CBOR.simple[20] = false;
 CBOR.simple[21] = true;

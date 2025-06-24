@@ -1,3 +1,5 @@
+let platformBigEndian = new Uint8Array(new Uint16Array([256]).buffer)[0];
+
 let cborTests = [
 	// from RFC-7049 Appendix A
 	{cbor: "00", data: 0, roundTrip: true},
@@ -79,9 +81,31 @@ let cborTests = [
 	{cbor: "bf6346756ef563416d7421ff", data: {"Fun":true,"Amt":-2}, roundTrip: false},
 
 	// Selected tags from https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
+	// Sets
 	{cbor: "d9010283016374776f22", data: new Set([1, "two", -3]), roundTrip: true},
+	// Typed arrays
+	{cbor: "d8404501020410ff", data: new Uint8Array([1, 2, 4, 16, 255]), roundTrip: true},
+	{cbor: "d84845fffefcf080", data: new Int8Array([-1, -2, -4, -16, -128]), roundTrip: true},
+	{cbor: "D84046030061000000", data: new Uint8Array([3,0,97,0,0,0]), roundTrip: platformBigEndian},
+	{cbor: "D8484603F761000000", data: new Int8Array([3,-9,97,0,0,0]), roundTrip: platformBigEndian},
+	{cbor: "D8454C030000006100000000000000", data: new Uint16Array([3,0,97,0,0,0]), roundTrip: platformBigEndian},
+	{cbor: "D8414C000300000061000000000000", data: new Uint16Array([3,0,97,0,0,0]), roundTrip: !platformBigEndian},
+	{cbor: "D84D4C0300F7FF6100F0DA00000000", data: new Int16Array([3,-9,97,-9488,0,0]), roundTrip: platformBigEndian},
+	{cbor: "D8494C0003FFF70061DAF000000000", data: new Int16Array([3,-9,97,-9488,0,0]), roundTrip: !platformBigEndian},
+	{cbor: "D8465818030000000000000061000000000000005CC85D0500000000", data: new Uint32Array([3,0,97,0,90032220,0]), roundTrip: platformBigEndian},
+	{cbor: "D842581800000003000000000000006100000000055DC85C00000000", data: new Uint32Array([3,0,97,0,90032220,0]), roundTrip: !platformBigEndian},
+	{cbor: "D84E581803000000F7FFFFFF61000000F0DAFFFF5CC85D0500000000", data: new Int32Array([3,-9,97,-9488,90032220,0]), roundTrip: platformBigEndian},
+	{cbor: "D84A581800000003FFFFFFF700000061FFFFDAF0055DC85C00000000", data: new Int32Array([3,-9,97,-9488,90032220,0]), roundTrip: !platformBigEndian},
+	{cbor: "D847583003000000000000000000000000000000610000000000000000000000000000005CC85D05000000000000000000000000", data: new BigUint64Array([3n,0n,97n,0n,90032220n,0n]), roundTrip: platformBigEndian},
+	{cbor: "D8435830000000000000000300000000000000000000000000000061000000000000000000000000055DC85C0000000000000000", data: new BigUint64Array([3n,0n,97n,0n,90032220n,0n]), roundTrip: !platformBigEndian},
+	{cbor: "D84F58300300000000000000F7FFFFFFFFFFFFFF6100000000000000F0DAFFFFFFFFFFFF5CC85D0500000000521B4C2FD133E3FF", data: new BigInt64Array([3n,-9n,97n,-9488n,90032220n,-8105800789910702n]), roundTrip: platformBigEndian},
+	{cbor: "D84B58300000000000000003FFFFFFFFFFFFFFF70000000000000061FFFFFFFFFFFFDAF000000000055DC85CFFE333D12F4C1B52", data: new BigInt64Array([3n,-9n,97n,-9488n,90032220n,-8105800789910702n]), roundTrip: !platformBigEndian},
+	{cbor: "D8555818DB0F4940E6E91DC174D1C242204214C60CB9AB4C7761E6D9", data: new Float32Array([3.1415927410125732, -9.869604110717773, 97.40908813476562, -9488.53125, 90032224, -8105801046556672]), roundTrip: platformBigEndian},
+	{cbor: "D851581840490FDBC11DE9E642C2D174C61442204CABB90CD9E66177", data: new Float32Array([3.1415927410125732, -9.869604110717773, 97.40908813476562, -9488.53125, 90032224, -8105801046556672]), roundTrip: !platformBigEndian},
+	{cbor: "D8565830182D4454FB210940DE45BEC93CBD23C02508298C2E5A584061A855F84388C2C0E4295F7321779541AEE4B3D02ECC3CC3", data: new Float64Array([3.141592653589793, -9.869604401089358, 97.40909103400243, -9488.531016070572, 90032220.84293324, -8105800789910702]), roundTrip: platformBigEndian},
+	{cbor: "D8525830400921FB54442D18C023BD3CC9BE45DE40585A2E8C290825C0C28843F855A86141957721735F29E4C33CCC2ED0B3E4AE", data: new Float64Array([3.141592653589793, -9.869604401089358, 97.40909103400243, -9488.531016070572, 90032220.84293324, -8105800789910702]), roundTrip: !platformBigEndian},
+
 	/* TODO
-		* Typed arrays
 		* 43000 & 43001 - complex numbers
 	*/
 ];
