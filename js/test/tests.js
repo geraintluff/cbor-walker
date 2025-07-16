@@ -3,6 +3,7 @@ if (typeof require === 'function') {
 }
 
 let hasFloat16 = (typeof Float16Array === 'function');
+let hasBigInt = (typeof BigInt64Array == 'function' && typeof BigUint64Array === 'function');
 let platformBigEndian = new Uint8Array(new Uint16Array([256]).buffer)[0];
 
 let cborTests = [
@@ -16,11 +17,11 @@ let cborTests = [
 	{cbor: "1864", data: 100, roundTrip: true},
 	{cbor: "1903e8", data: 1000, roundTrip: true},
 	{cbor: "1a000f4240", data: 1000000, roundTrip: true},
-	{cbor: "1b000000e8d4a51000", data: 1000000000000, roundTrip: true},
-	{cbor: "1bffffffffffffffff", data: 18446744073709551615n, roundTrip: true},
-	{cbor: "c249010000000000000000", data: 18446744073709551616n, roundTrip: true},
-	{cbor: "3bffffffffffffffff", data: -18446744073709551616n, roundTrip: true},
-	{cbor: "c349010000000000000000", data: -18446744073709551617n, roundTrip: true},
+	hasBigInt && {cbor: "1b000000e8d4a51000", data: 1000000000000, roundTrip: true},
+	hasBigInt && {cbor: "1bffffffffffffffff", data: 18446744073709551615n, roundTrip: true},
+	hasBigInt && {cbor: "c249010000000000000000", data: 18446744073709551616n, roundTrip: true},
+	hasBigInt && {cbor: "3bffffffffffffffff", data: -18446744073709551616n, roundTrip: true},
+	hasBigInt && {cbor: "c349010000000000000000", data: -18446744073709551617n, roundTrip: true},
 	{cbor: "20", data: -1, roundTrip: true},
 	{cbor: "29", data: -10, roundTrip: true},
 	{cbor: "3863", data: -100, roundTrip: true},
@@ -101,10 +102,10 @@ let cborTests = [
 	{cbor: "D842581800000003000000000000006100000000055DC85C00000000", data: new Uint32Array([3,0,97,0,90032220,0]), roundTrip: platformBigEndian},
 	{cbor: "D84E581803000000F7FFFFFF61000000F0DAFFFF5CC85D0500000000", data: new Int32Array([3,-9,97,-9488,90032220,0]), roundTrip: !platformBigEndian},
 	{cbor: "D84A581800000003FFFFFFF700000061FFFFDAF0055DC85C00000000", data: new Int32Array([3,-9,97,-9488,90032220,0]), roundTrip: platformBigEndian},
-	{cbor: "D847583003000000000000000000000000000000610000000000000000000000000000005CC85D05000000000000000000000000", data: new BigUint64Array([3n,0n,97n,0n,90032220n,0n]), roundTrip: !platformBigEndian},
-	{cbor: "D8435830000000000000000300000000000000000000000000000061000000000000000000000000055DC85C0000000000000000", data: new BigUint64Array([3n,0n,97n,0n,90032220n,0n]), roundTrip: platformBigEndian},
-	{cbor: "D84F58300300000000000000F7FFFFFFFFFFFFFF6100000000000000F0DAFFFFFFFFFFFF5CC85D0500000000521B4C2FD133E3FF", data: new BigInt64Array([3n,-9n,97n,-9488n,90032220n,-8105800789910702n]), roundTrip: !platformBigEndian},
-	{cbor: "D84B58300000000000000003FFFFFFFFFFFFFFF70000000000000061FFFFFFFFFFFFDAF000000000055DC85CFFE333D12F4C1B52", data: new BigInt64Array([3n,-9n,97n,-9488n,90032220n,-8105800789910702n]), roundTrip: platformBigEndian},
+	hasBigInt && {cbor: "D847583003000000000000000000000000000000610000000000000000000000000000005CC85D05000000000000000000000000", data: new BigUint64Array([3n,0n,97n,0n,90032220n,0n]), roundTrip: !platformBigEndian},
+	hasBigInt && {cbor: "D8435830000000000000000300000000000000000000000000000061000000000000000000000000055DC85C0000000000000000", data: new BigUint64Array([3n,0n,97n,0n,90032220n,0n]), roundTrip: platformBigEndian},
+	hasBigInt && {cbor: "D84F58300300000000000000F7FFFFFFFFFFFFFF6100000000000000F0DAFFFFFFFFFFFF5CC85D0500000000521B4C2FD133E3FF", data: new BigInt64Array([3n,-9n,97n,-9488n,90032220n,-8105800789910702n]), roundTrip: !platformBigEndian},
+	hasBigInt && {cbor: "D84B58300000000000000003FFFFFFFFFFFFFFF70000000000000061FFFFFFFFFFFFDAF000000000055DC85CFFE333D12F4C1B52", data: new BigInt64Array([3n,-9n,97n,-9488n,90032220n,-8105800789910702n]), roundTrip: platformBigEndian},
 	hasFloat16 && {cbor: "d8544c4842efc81756a2f0007c00fc", data: new Float16Array([3.140625, -9.8671875, 97.4375, -9488, Infinity, -Infinity]), roundTrip: !platformBigEndian},
 	hasFloat16 && {cbor: "d8504c4248c8ef5617f0a27c00fc00", data: new Float16Array([3.140625, -9.8671875, 97.4375, -9488, Infinity, -Infinity]), roundTrip: platformBigEndian},
 	{cbor: "D8555818DB0F4940E6E91DC174D1C242204214C60CB9AB4C7761E6D9", data: new Float32Array([3.1415927410125732, -9.869604110717773, 97.40908813476562, -9488.53125, 90032224, -8105801046556672]), roundTrip: !platformBigEndian},

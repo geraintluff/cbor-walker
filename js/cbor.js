@@ -1,8 +1,8 @@
 let CBOR = {
 	encode(value, optionalBuffer) {
-		let currentBuffer = (optionalBuffer && optionalBuffer.resizable)
-			? (optionalBuffer.resize(0), optionalBuffer)
-			: new ArrayBuffer(0, {maxByteLength: 64});
+		let currentLength = 0;
+		let currentBuffer = optionalBuffer || new ArrayBuffer(64, {maxByteLength: 64});
+		if (currentBuffer.resizable) currentBuffer.resize(currentBuffer.maxByteLength);
 		let data = new DataView(currentBuffer);
 		let buffers = [currentBuffer];
 		
@@ -10,15 +10,22 @@ let CBOR = {
 		
 		function writeHead(typeCode, remainder, extraBytes) {
 			let bytes = 1 + extraBytes;
-			if (currentBuffer.byteLength + bytes > currentBuffer.maxByteLength) {
+			if (currentLength + bytes > currentBuffer.byteLength) {
 				let capacity = 1;
-				while (capacity <= currentBuffer.maxByteLength || capacity <= extraBytes) capacity *= 2;
-				currentBuffer = new ArrayBuffer(0, {maxByteLength: capacity});
+				while (capacity <= currentBuffer.byteLength || capacity <= extraBytes) capacity *= 2;
+				if (currentBuffer.resizable) {
+					currentBuffer.resize(currentLength);
+				} else if (currentLength != currentBuffer.byteLength) {
+					// Previous buffer wasn't resizable - slice it
+					buffers.push(buffers.pop().slice(0, currentLength));
+				}
+				currentLength = 0;
+				currentBuffer = new ArrayBuffer(capacity, {maxByteLength: capacity});
 				buffers.push(currentBuffer);
 				data = new DataView(currentBuffer);
 			}
-			let index = currentBuffer.byteLength;
-			currentBuffer.resize(index + bytes);
+			let index = currentLength;
+			currentLength += bytes;
 			data.setUint8(index, (typeCode<<5)|remainder);
 			return index + 1;
 		}
@@ -145,15 +152,23 @@ let CBOR = {
 		}
 		write(value);
 		
-		if (buffers.length == 1) return buffers[0];
+		if (buffers.length == 1) {
+			if (currentBuffer.resizable) {
+				currentBuffer.resize(currentLength);
+			} else if (currentLength != currentBuffer.byteLength) {
+				currentBuffer = currentBuffer.slice(0, currentLength);
+			}
+			return currentBuffer;
+		}
 		
 		let totalLength = 0;
-		buffers.forEach(b => totalLength += b.length);
-		let result = new ArrayBuffer(0, {maxByteLength: totalLength});
+		buffers.forEach(b => totalLength += b.byteLength);
+		let result = new ArrayBuffer(totalLength, {maxByteLength: totalLength});
 		let array8 = new Uint8Array(result);
+		currentLength = 0;
 		buffers.forEach(b => {
-			let index = result.byteLength;
-			result.resize(index + b.byteLength);
+			let index = currentLength;
+			currentLength += b.byteLength;
 			array8.set(new Uint8Array(b), index);
 		});
 		return result;
@@ -401,8 +416,6 @@ CBOR.simple[23] = void 0;
 	Int16Array.prototype[encodeTag] = array => [platformBE ? 73 : 77, dataView(array)];
 	Uint32Array.prototype[encodeTag] = array => [platformBE ? 66 : 70, dataView(array)];
 	Int32Array.prototype[encodeTag] = array => [platformBE ? 74 : 78, dataView(array)];
-	BigUint64Array.prototype[encodeTag] = array => [platformBE ? 67 : 71, dataView(array)];
-	BigInt64Array.prototype[encodeTag] = array => [platformBE ? 75 : 79, dataView(array)];
 	if (hasFloat16) Float16Array.prototype[encodeTag] = array => [platformBE ? 80 : 84, dataView(array)];
 	Float32Array.prototype[encodeTag] = array => [platformBE ? 81 : 85, dataView(array)];
 	Float64Array.prototype[encodeTag] = array => [platformBE ? 82 : 86, dataView(array)];
@@ -434,17 +447,13 @@ CBOR.simple[23] = void 0;
 		64: a => a,
 		65: makeEndian(Uint16Array, true),
 		66: makeEndian(Uint32Array, true),
-		67: makeEndian(BigUint64Array, true),
 		69: makeEndian(Uint16Array, false),
 		70: makeEndian(Uint32Array, false),
-		71: makeEndian(BigUint64Array, false),
 		72: a => new Int8Array(a.buffer, a.byteOffset, a.length),
 		73: makeEndian(Int16Array, true),
 		74: makeEndian(Int32Array, true),
-		75: makeEndian(BigInt64Array, true),
 		77: makeEndian(Int16Array, false),
 		78: makeEndian(Int32Array, false),
-		79: makeEndian(BigInt64Array, false),
 		80: hasFloat16 && makeEndian(Float16Array, true),
 		81: makeEndian(Float32Array, true),
 		82: makeEndian(Float64Array, true),
@@ -452,5 +461,16 @@ CBOR.simple[23] = void 0;
 		85: makeEndian(Float32Array, false),
 		86: makeEndian(Float64Array, false)
 	});
+	// Outdated Safari versions don't have this
+	if (typeof BigUint64Array === 'function' && typeof BigInt64Array === 'function') {
+		BigUint64Array.prototype[encodeTag] = array => [platformBE ? 67 : 71, dataView(array)];
+		BigInt64Array.prototype[encodeTag] = array => [platformBE ? 75 : 79, dataView(array)];
+		Object.assign(CBOR.decodeTags, {
+			67: makeEndian(BigUint64Array, true),
+			71: makeEndian(BigUint64Array, false),
+			75: makeEndian(BigInt64Array, true),
+			79: makeEndian(BigInt64Array, false)
+		});
+	}
 })(CBOR.encodeTag, !!new Uint8Array(new Uint16Array([256]).buffer)[0]);
 if (typeof module === 'object' && module?.exports) module.exports = CBOR;
