@@ -315,11 +315,11 @@ let CBOR = {
 				case 27: {
 					if (typeCode == 7) {
 						let v = data.getFloat64(index);
-						index += 4;
+						index += 8;
 						return v;
 					} else {
 						let additional = data.getBigUint64(index);
-						index += 4;
+						index += 8;
 						if (additional < Number.MAX_SAFE_INTEGER) {
 							return makeValue(typeCode, Number(additional), uint8Bytes);
 						} else {
