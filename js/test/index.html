@@ -45,7 +45,11 @@
 				let decoded = CBOR.decode16(hex);
 				console.log(decoded);
 				assertDeepEqual(test.data, decoded);
-				
+				assertDeepEqual(test.data, CBOR.decode(bytes));
+				let resizable = new ArrayBuffer(bytes.length, {maxByteLength: bytes.length*2});
+				(new Uint8Array(resizable)).set(bytes);
+				assertDeepEqual(test.data, CBOR.decode(resizable));
+
 				if (test.roundTrip) {
 					let hex2 = CBOR.encode16(test.data);
 					if (hex2.toLowerCase() != hex.toLowerCase()) {

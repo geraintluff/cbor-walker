@@ -185,6 +185,7 @@ let CBOR = {
 		data = new DataView(data);
 		
 		let breakCode = CBOR.breakCode;
+		let bugs = CBOR._bugs;
 		
 		function makeValue(typeCode, additional, uint8Bytes) {
 			switch (typeCode) {
@@ -197,6 +198,7 @@ let CBOR = {
 				}
 				case 3: {
 					let slice = new Uint8Array(data.buffer, index, additional);
+					if (bugs.sliceBeforeDecode) slice = slice.slice(0);
 					index += additional;
 					return new TextDecoder().decode(slice);
 				}
@@ -391,7 +393,17 @@ let CBOR = {
 		let bytes = new Uint8Array(hex.length/2);
 		for (let i = 0; i < bytes.length; ++i) bytes[i] = parseInt(hex.substr(i*2, 2), 16);
 		return CBOR.decode(bytes);
-	}
+	},
+	_bugs: (_ => {
+		let bugs = {};
+		// Safari doesn't like decoding text from resizable buffers
+		try {
+			(new TextDecoder).decode(new ArrayBuffer(0, {maxByteLength: 1}));
+		} catch (e) {
+			bugs.sliceBeforeDecode = true;
+		}
+		return bugs;
+	})()
 };
 for (let i = 0; i < 256; ++i) CBOR.simple[i] = Symbol(`CBOR ${i}`);
 CBOR.simple[20] = false;
