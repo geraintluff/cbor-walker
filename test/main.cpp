@@ -54,6 +54,44 @@ void printTypedArray(const char *name, std::ostream &out) {
 	}
 }
 
+template<class Writer>
+void writeExampleDocument(Writer &writer) {
+	writer.addInt(0);
+	writer.addTag(64);
+	writer.addInt(100);
+	writer.addBool(false);
+	writer.addBool(true);
+	writer.addInt(-1000);
+	writer.openArray();
+	unsigned char writeChars[3] = {0x01, 0x02, 0x03};
+	writer.addBytes(writeChars, 3);
+	writer.addInt(4);
+	writer.close();
+	writer.openArray(2);
+	writer.addBytes(writeChars, 3);
+	writer.addInt(4);
+	writer.openMap(2);
+	writer.addInt(4);
+	writer.addBytes(writeChars, 3);
+	writer.addInt(5);
+	const char *writeString = "five";
+	writer.addUtf8(writeString);
+	writer.openMap();
+	writer.addInt(4);
+	writer.addBytes(writeChars, 2);
+	writer.addInt(-5);
+	writer.addUtf8(writeString, 3);
+	writer.close();
+	float writeFloats[2] = {3.1415927f, 100000.0f};
+	double writeDoubles[2] = {3.141592653589793, -4.1};
+	writer.addTypedArray(writeFloats, 2);
+	writer.addTypedArray(writeFloats, 2, true);
+	writer.addTypedArray(writeDoubles, 2);
+	writer.addTypedArray(writeDoubles, 2, true);
+	writer.addFloat(3.1415927f);
+	writer.addFloat(3.141592653589793);
+}
+
 int main() {
 	{ // Generate typed-array test entries for the JS library
 		std::ofstream outFile{"js-typed-array-test-cases.txt"};
@@ -618,42 +656,10 @@ int main() {
 	
 	std::vector<unsigned char> writeBytes;
 	signalsmith::cbor::CborWriter writer(writeBytes);
-	writer.addInt(0);
-	writer.addTag(64);
-	writer.addInt(100);
-	writer.addBool(false);
-	writer.addBool(true);
-	writer.addInt(-1000);
-	writer.openArray();
-	unsigned char writeChars[3] = {0x01, 0x02, 0x03};
-	writer.addBytes(writeChars, 3);
-	writer.addInt(4);
-	writer.close();
-	writer.openArray(2);
-	writer.addBytes(writeChars, 3);
-	writer.addInt(4);
-	writer.openMap(2);
-	writer.addInt(4);
-	writer.addBytes(writeChars, 3);
-	writer.addInt(5);
-	const char *writeString = "five";
-	writer.addUtf8(writeString);
-	writer.openMap();
-	writer.addInt(4);
-	writer.addBytes(writeChars, 2);
-	writer.addInt(-5);
-	writer.addUtf8(writeString, 3);
-	writer.close();
-	float writeFloats[2] = {3.1415927f, 100000.0f};
-	double writeDoubles[2] = {3.141592653589793, -4.1};
-	writer.addTypedArray(writeFloats, 2);
-	writer.addTypedArray(writeFloats, 2, true);
-	writer.addTypedArray(writeDoubles, 2);
-	writer.addTypedArray(writeDoubles, 2, true);
-	writer.addFloat(3.1415927f);
-	writer.addFloat(3.141592653589793);
+	writeExampleDocument(writer);
 
 	std::cout << "CborWriter output:\n";
+	test(bytes.size() == writeBytes.size(), "lengths match");
 	for (size_t i = 0; i < writeBytes.size(); ++i) {
 		unsigned char byte = writeBytes[i];
 		unsigned char hex[3] = {(unsigned char)(byte>>4), (unsigned char)(byte&0x0F), 0};
@@ -662,6 +668,9 @@ int main() {
 		
 		test(bytes[i] == writeBytes[i], std::to_string(i) + ": " + (char *)hex);
 	}
-	test(bytes.size() == writeBytes.size(), "lengths match");
 	test(true, "hell yeah");
+
+	std::cout << "CborWriterStream:\n";
+	signalsmith::cbor::CborWriterStream writerStream{std::cout};
+	writeExampleDocument(writerStream);
 }

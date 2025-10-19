@@ -969,6 +969,21 @@ private:
 	}
 };
 
+struct CborWriterStream : public CborWriterBase<CborWriterStream> {
+	CborWriterStream(std::ostream &output) : output(output) {}
+	
+private:
+	friend struct CborWriterBase<CborWriterStream>;
+
+	std::ostream &output;
+	void writeByte(unsigned char b) {
+		output.put((char)b);
+	}
+	void writeBytes(const unsigned char *ptr, size_t length) {
+		output.write((const char *)ptr, length);
+	}
+};
+
 }} // namespace
 
 #endif // include guard
