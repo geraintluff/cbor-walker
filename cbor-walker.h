@@ -721,9 +721,8 @@ private:
 	}
 };
 
-struct CborWriter {
-	CborWriter(std::vector<unsigned char> &bytes) : bytes(bytes) {}
-	
+template<class SubClassCRTP>
+struct CborWriterBase {
 	void addUInt(uint64_t u) {
 		writeHead(0, u);
 	}
@@ -741,33 +740,33 @@ struct CborWriter {
 		writeHead(7, 20 + b);
 	}
 	void openArray() {
-		bytes.push_back(0x9F);
+		sub().writeByte(0x9F);
 	}
 	void openArray(size_t items) {
 		writeHead(4, items);
 	}
 	void openMap() {
-		bytes.push_back(0xBF);
+		sub().writeByte(0xBF);
 	}
 	void openMap(size_t pairs) {
 		writeHead(5, pairs);
 	}
 	void close() {
-		bytes.push_back(0xFF);
+		sub().writeByte(0xFF);
 	}
 	void addBytes(const void *ptr, size_t length) {
 		addBytes((const unsigned char *)ptr, length);
 	}
 	void addBytes(const unsigned char *ptr, size_t length) {
 		writeHead(2, length);
-		bytes.insert(bytes.end(), ptr, ptr + length);
+		sub().writeBytes(ptr, length);
 	}
 	void openBytes() {
-		bytes.push_back(0x5F);
+		sub().writeByte(0x5F);
 	}
 	void addUtf8(const char *ptr, size_t length) {
 		writeHead(3, length);
-		bytes.insert(bytes.end(), ptr, ptr + length);
+		sub().writeBytes((const unsigned char *)ptr, length);
 	}
 	void addUtf8(const char *str) {
 		addUtf8(str, std::strlen(str));
@@ -781,20 +780,20 @@ struct CborWriter {
 	}
 #endif
 	void openUtf8() {
-		bytes.push_back(0x7F);
+		sub().writeByte(0x7F);
 	}
 	void addNull() {
-		bytes.push_back(0xF6);
+		sub().writeByte(0xF6);
 	}
 	void addUndefined() {
-		bytes.push_back(0xF7);
+		sub().writeByte(0xF7);
 	}
 	void addSimple(unsigned char k) {
 		writeHead(7, k);
 	}
 	
 	void addFloat(float v) {
-		bytes.push_back(0xFA);
+		sub().writeByte(0xFA);
 #ifdef CBOR_WALKER_USE_BIT_CAST
 		uint32_t vi = std::bit_cast<uint32_t>(v);
 #else
@@ -803,11 +802,11 @@ struct CborWriter {
 #endif
 		for (size_t i = 0; i < 4; ++i) {
 			auto shift = (3 - i)*8;
-			bytes.push_back((vi>>shift)&0xFF);
+			sub().writeByte((vi>>shift)&0xFF);
 		}
 	}
 	void addFloat(double v) {
-		bytes.push_back(0xFB);
+		sub().writeByte(0xFB);
 #ifdef CBOR_WALKER_USE_BIT_CAST
 		uint64_t vi = std::bit_cast<uint64_t>(v);
 #else
@@ -816,7 +815,7 @@ struct CborWriter {
 #endif
 		for (size_t i = 0; i < 8; ++i) {
 			auto shift = (7 - i)*8;
-			bytes.push_back((vi>>shift)&0xFF);
+			sub().writeByte((vi>>shift)&0xFF);
 		}
 	}
 	
@@ -909,27 +908,31 @@ struct CborWriter {
 		writeTypedBlock<uint64_t>(unsignedArray, length, bigEndian);
 	}
 private:
+	SubClassCRTP & sub() {
+		return *(SubClassCRTP *)this;
+	}
+
 	void writeHead(unsigned char type, uint64_t argument) {
 		type <<= 5;
 		if (argument >= 4294967296ul) {
-			bytes.push_back(type|27);
+			sub().writeByte(type|27);
 			for (size_t i = 0; i < 8; ++i) {
-				bytes.push_back(argument>>(56 - i*8));
+				sub().writeByte(argument>>(56 - i*8));
 			}
 		} else if (argument >= 65536) {
-			bytes.push_back(type|26);
+			sub().writeByte(type|26);
 			for (size_t i = 0; i < 4; ++i) {
-				bytes.push_back(argument>>(24 - i*8));
+				sub().writeByte(argument>>(24 - i*8));
 			}
 		} else if (argument >= 256) {
-			bytes.push_back(type|25);
-			bytes.push_back(argument>>8);
-			bytes.push_back(argument);
+			sub().writeByte(type|25);
+			sub().writeByte(argument>>8);
+			sub().writeByte(argument);
 		} else if (argument >= 24) {
-			bytes.push_back(type|24);
-			bytes.push_back(argument);
+			sub().writeByte(type|24);
+			sub().writeByte(argument);
 		} else {
-			bytes.push_back(type|argument);
+			sub().writeByte(type|argument);
 		}
 	}
 	
@@ -940,17 +943,30 @@ private:
 		if (bigEndian) {
 			for (size_t i = 0; i < length; ++i) {
 				UIntType v = array[i];
-				for (size_t b = 0; b < B; ++b) bytes.push_back((v>>((B-1-b)*8))&0xFF);
+				for (size_t b = 0; b < B; ++b) sub().writeByte((v>>((B-1-b)*8))&0xFF);
 			}
 		} else {
 			for (size_t i = 0; i < length; ++i) {
 				UIntType v = array[i];
-				for (size_t b = 0; b < B; ++b) bytes.push_back((v>>(b*8))&0xFF);
+				for (size_t b = 0; b < B; ++b) sub().writeByte((v>>(b*8))&0xFF);
 			}
 		}
 	}
+};
+
+struct CborWriter : public CborWriterBase<CborWriter> {
+	CborWriter(std::vector<unsigned char> &bytes) : bytes(bytes) {}
+	
+private:
+	friend struct CborWriterBase<CborWriter>;
 
 	std::vector<unsigned char> &bytes;
+	void writeByte(unsigned char b) {
+		bytes.push_back(b);
+	}
+	void writeBytes(const unsigned char *ptr, size_t length) {
+		bytes.insert(bytes.end(), ptr, ptr + length);
+	}
 };
 
 }} // namespace

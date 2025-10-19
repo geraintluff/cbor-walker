@@ -6,11 +6,16 @@
 
 #include <string>
 #include <sstream>
+#include <fstream>
 
 #include <iomanip>
 template<class T>
-void printTypedArray(const char *name, size_t endianCount=2) {
-	for (size_t bigEndian = 0; bigEndian < endianCount; ++bigEndian) {
+void printTypedArray(const char *name, std::ostream &out) {
+	bool singleByte = (sizeof(T) == 1);
+
+	for (size_t bigEndian = 0; bigEndian < 2; ++bigEndian) {
+		if (bigEndian && singleByte) continue;
+		
 		std::vector<unsigned char> writeBytes;
 		signalsmith::cbor::CborWriter writer(writeBytes);
 		
@@ -26,41 +31,43 @@ void printTypedArray(const char *name, size_t endianCount=2) {
 			writer.addTypedArray(vector.data(), vector.size(), bigEndian);
 		}
 
-		std::cout << std::scientific << std::setprecision(20);
-		std::cout << "{cbor: \"";
+		out << std::scientific << std::setprecision(20);
+		out << "{cbor: \"";
 		for (size_t i = 0; i < writeBytes.size(); ++i) {
 			unsigned char byte = writeBytes[i];
 			unsigned char hex[3] = {(unsigned char)(byte>>4), (unsigned char)(byte&0x0F), 0};
 			hex[0] += (hex[0] < 10) ? '0' : ('A' - 10);
 			hex[1] += (hex[1] < 10) ? '0' : ('A' - 10);
 			
-			std::cout << hex;
+			out << hex;
 		}
-		std::cout << "\", data: new " << name << "Array([";
+		out << "\", data: new " << name << "Array([";
 		for (size_t i = 0; i < vector.size(); ++i) {
-			if (i) std::cout << ",";
+			if (i) out << ",";
 			if (sizeof(T) == 1) {
-				std::cout << int(vector[i]);
+				out << int(vector[i]);
 			} else {
-				std::cout << vector[i];
+				out << vector[i];
 			}
 		}
-		std::cout << "]), roundTrip: " << (bigEndian ? "!bigEndian" : "bigEndian") << "},\n";
+		out << "]), roundTrip: " << (singleByte ? "true" : bigEndian ? "!bigEndian" : "bigEndian") << "},\n";
 	}
 }
 
 int main() {
-	printTypedArray<uint8_t>("Uint8", 1);
-	printTypedArray<int8_t>("Int8", 1);
-	printTypedArray<uint16_t>("Uint16");
-	printTypedArray<int16_t>("Int16");
-	printTypedArray<uint32_t>("Uint32");
-	printTypedArray<int32_t>("Int32");
-	printTypedArray<uint64_t>("BigUint64Array");
-	printTypedArray<int64_t>("BigInt64Array");
-	printTypedArray<float>("Float32");
-	printTypedArray<double>("Float64");
-	return 0;
+	{ // Generate typed-array test entries for the JS library
+		std::ofstream outFile{"js-typed-array-test-cases.txt"};
+		printTypedArray<uint8_t>("Uint8", outFile);
+		printTypedArray<int8_t>("Int8", outFile);
+		printTypedArray<uint16_t>("Uint16", outFile);
+		printTypedArray<int16_t>("Int16", outFile);
+		printTypedArray<uint32_t>("Uint32", outFile);
+		printTypedArray<int32_t>("Int32", outFile);
+		printTypedArray<uint64_t>("BigUint64Array", outFile);
+		printTypedArray<int64_t>("BigInt64Array", outFile);
+		printTypedArray<float>("Float32", outFile);
+		printTypedArray<double>("Float64", outFile);
+	}
 
 	std::vector<unsigned char> bytes;
 	
