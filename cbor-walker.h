@@ -23,7 +23,8 @@ namespace signalsmith { namespace cbor {
 
 struct CborWalker {
 	CborWalker(uint64_t errorCode=ERROR_NOT_INITIALISED) : CborWalker(nullptr, nullptr, errorCode) {}
-	CborWalker(const std::vector<unsigned char> &vector) : CborWalker(vector.data(), vector.data() + vector.size()) {}
+	CborWalker(const std::vector<unsigned char> &vector) : CborWalker(vector.data(), vector.size()) {}
+	CborWalker(const unsigned char *data, size_t length) : CborWalker(data, data + length) {}
 	CborWalker(const unsigned char *data, const unsigned char *dataEnd) : data(data), dataEnd(dataEnd) {
 		if (data >= dataEnd) {
 			typeCode = TypeCode::error;
