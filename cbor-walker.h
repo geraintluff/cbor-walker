@@ -18,6 +18,7 @@
 #	define CBOR_WALKER_USE_BIT_CAST
 #	include <bit>
 #endif
+#include <ostream>
 
 namespace signalsmith { namespace cbor {
 
