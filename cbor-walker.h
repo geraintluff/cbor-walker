@@ -535,6 +535,26 @@ protected:
 	};
 };
 
+inline bool operator==(const CborWalker &cbor, const char *cstr) {
+	if (!cbor.isUtf8()) return false;
+	auto length = std::strlen(cstr);
+	auto *bytes = cbor.bytes();
+	if (cbor.length() != length) return false;
+	for (size_t i = 0; i < length; ++i) {
+		if (bytes[i] != cstr[i]) return false;
+	}
+	return true;
+}
+inline bool operator==(const char *cstr, const CborWalker &cbor) {
+	return cbor == cstr;
+}
+inline bool operator!=(const CborWalker &cbor, const char *cstr) {
+	return !(cbor == cstr);
+}
+inline bool operator!=(const char *cstr, const CborWalker &cbor) {
+	return !(cbor == cstr);
+}
+
 // Automatically skips over tags, but still lets you query them
 struct TaggedCborWalker : public CborWalker {
 	TaggedCborWalker() {}
