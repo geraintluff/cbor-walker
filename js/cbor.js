@@ -198,7 +198,7 @@ let CBOR = {
 				}
 				case 3: {
 					let slice = new Uint8Array(data.buffer, index, additional);
-					if (bugs.sliceBeforeDecode) slice = slice.slice(0);
+					if (bugs.sliceBeforeDecode(data.buffer)) slice = slice.slice(0);
 					index += additional;
 					return new TextDecoder().decode(slice);
 				}
@@ -395,12 +395,18 @@ let CBOR = {
 		return CBOR.decode(bytes);
 	},
 	_bugs: (_ => {
-		let bugs = {};
+		let bugs = {
+			sliceBeforeDecode: buffer => false
+		};
+		if (typeof SharedArrayBuffer == 'function') {
+			bugs.sliceBeforeDecode = buffer => (buffer instanceof SharedArrayBuffer);
+		}
 		// Safari doesn't like decoding text from resizable buffers
 		try {
 			(new TextDecoder).decode(new ArrayBuffer(0, {maxByteLength: 1}));
 		} catch (e) {
-			bugs.sliceBeforeDecode = true;
+			let prevCheck = bugs.sliceBeforeDecode;
+			bugs.sliceBeforeDecode = (buffer => buffer.resizable || prevCheck(buffer));
 		}
 		return bugs;
 	})()
@@ -413,7 +419,7 @@ CBOR.simple[23] = void 0;
 
 ((encodeTag, platformBE) => {
 	Date.prototype[encodeTag] = date => [1, +date/1000];
-	URL.prototype[encodeTag] = url => [32, url.href];
+	if (typeof URL === 'function') URL.prototype[encodeTag] = url => [32, url.href];
 	Set.prototype[encodeTag] = s => [258, Array.from(s)];
 	
 	function dataView(array) {
